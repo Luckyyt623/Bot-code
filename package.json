@@ -1,14 +1,15 @@
 {
-  "name": "slither-multi-bot",
+  "name": "slither-bot",
   "version": "1.0.0",
-  "description": "Bot system for connecting to multiple Slither.io servers, collecting data and controlling custom snakes.",
+  "description": "Slither.io bot that connects to multiple servers",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
-  "author": "Lucky",
-  "license": "MIT",
   "dependencies": {
     "ws": "^8.17.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
   }
 }
