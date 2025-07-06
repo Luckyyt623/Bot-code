@@ -1,67 +1,100 @@
-// === index.js: Entry Point to Run Bot on Multiple Servers ===
-const WebSocket = require("ws");
-const readline = require("readline");
-const botCode = require("./botcode"); // Assume your full bot logic is exported or auto-applied
+// === Node.js-Compatible Auto-Circle Bot for Slither.io ===
+// This version avoids browser-specific objects (window, document)
+// and simulates circular movement for testing via console.
 
-// Custom skin data (as RGB array) for each bot, optional
-const customSkin = [
-  255, 255, 255, 0, 0, 0, Math.floor(Math.random()*255), Math.floor(Math.random()*255), 3,
-  255, 0, 0,
-  0, 255, 0,
-  0, 0, 255
-];
+const readline = require('readline');
+const WebSocket = require('ws');
 
-const servers = [
-  "wss://148.113.17.85:444/slither",
-  "wss://15.235.216.115:443/slither"
-];
+const state = {
+    autoCircle: false,
+    circleRadius: 100,
+    currentAngle: 0,
+    ws: null
+};
 
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout
-});
+const FRAME_RATE = 60; // 60 updates per second
+const LOOP_DELAY = 1000 / FRAME_RATE;
 
-function connectToServer(serverUrl) {
-  const ws = new WebSocket(serverUrl);
+function simulateMouseMove(ws) {
+    if (!state.autoCircle || !ws || ws.readyState !== WebSocket.OPEN) return;
 
-  ws.binaryType = "arraybuffer";
+    state.currentAngle += 0.05;
+    if (state.currentAngle >= Math.PI * 2) state.currentAngle = 0;
 
-  ws.on("open", () => {
-    console.log(`[+] Connected to ${serverUrl}`);
-
-    // Press 'T' twice logic (send "T" equivalent)
-    setTimeout(() => {
-      ws.send(new Uint8Array([84])); // Press T
-      setTimeout(() => {
-        ws.send(new Uint8Array([84])); // Press T again
-        console.log("[i] Simulated double 'T' press to start bot.");
-      }, 300);
-    }, 1000);
-
-    // Optionally send custom skin packet if supported
-    if (customSkin.length > 0) {
-      const skinPacket = new Uint8Array([112, ...customSkin]);
-      ws.send(skinPacket);
-      console.log("[i] Custom skin packet sent.");
-    }
-  });
-
-  ws.on("message", (data) => {
-    // Handle incoming data (you could parse leaderboard, minimap, etc.)
-    const byteArray = new Uint8Array(data);
-    if (byteArray[0] === 112) {
-      console.log("[Data] Leaderboard / Skin confirmed packet.");
-    }
-  });
-
-  ws.on("close", () => {
-    console.log(`[-] Disconnected from ${serverUrl}`);
-  });
-
-  ws.on("error", (err) => {
-    console.error(`[!] Error on ${serverUrl}:`, err.message);
-  });
+    const angleValue = Math.floor((state.currentAngle / (2 * Math.PI)) * 250); // Convert to 0-250 byte angle
+    const anglePacket = new Uint8Array([angleValue]);
+    ws.send(anglePacket);
 }
 
-// Connect to all servers
-servers.forEach(server => connectToServer(server));
+function startAutoCircle(ws) {
+    if (state.autoCircle) return;
+    state.autoCircle = true;
+    console.log('[AutoCircle] Started');
+
+    const loop = setInterval(() => {
+        if (!state.autoCircle || ws.readyState !== WebSocket.OPEN) {
+            clearInterval(loop);
+            return;
+        }
+        simulateMouseMove(ws);
+    }, LOOP_DELAY);
+}
+
+function stopAutoCircle() {
+    state.autoCircle = false;
+    console.log('[AutoCircle] Stopped');
+}
+
+function toggleAutoCircle(ws) {
+    if (state.autoCircle) {
+        stopAutoCircle();
+    } else {
+        startAutoCircle(ws);
+    }
+}
+
+function connectToSlither(serverUrl) {
+    const ws = new WebSocket(serverUrl);
+    state.ws = ws;
+
+    ws.on('open', () => {
+        console.log(`[+] Connected to ${serverUrl}`);
+
+        // Simulate login ping or skin packet if needed here
+
+        // Automatically enable auto-circle
+        startAutoCircle(ws);
+    });
+
+    ws.on('message', data => {
+        // Parse or log packets if needed
+    });
+
+    ws.on('close', () => {
+        console.log('[-] Disconnected');
+        stopAutoCircle();
+    });
+
+    ws.on('error', err => {
+        console.error('[!] WebSocket error:', err.message);
+    });
+}
+
+// Command line input to toggle auto-circle manually
+const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+});
+
+rl.on('line', (input) => {
+    const cmd = input.trim().toLowerCase();
+    if (cmd === 'toggle') {
+        toggleAutoCircle(state.ws);
+    }
+});
+
+// === Start here ===
+const serverURL = 'wss://148.113.17.85:444/slither'; // You can change this
+connectToSlither(serverURL);
+
+console.log("Type 'toggle' to enable or disable auto-circle");
