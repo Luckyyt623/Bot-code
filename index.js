@@ -1,104 +1,88 @@
-// === Auto-Circle Bot for Slither.io (Node.js) ===
+const WebSocket = require("ws");
 
-const readline = require('readline');
-const WebSocket = require('ws');
+// === CONFIG ===
+const serverUrl = "wss://94.72.180.82:475/slither";
+const nickname = "LuckyBot";
+const protocolVersion = 11;
+const skinId = 0;
 
-const state = {
-    autoCircle: false,
-    angle: 0,
-    ws: null
-};
-
-const LOOP_INTERVAL = 1000 / 30; // ~30 FPS (less CPU usage)
-
-// Convert radians (0 to 2π) to slither.io angle byte (0-250)
-function angleToByte(angle) {
-    return Math.floor((angle % (2 * Math.PI)) / (2 * Math.PI) * 250);
-}
-
-function sendMouseAngle(ws) {
-    if (!state.autoCircle || !ws || ws.readyState !== WebSocket.OPEN) return;
-
-    state.angle += 0.04;
-    const angleByte = angleToByte(state.angle);
-    const buf = Buffer.alloc(1);
-    buf[0] = angleByte;
-
-    ws.send(buf); // Send mouse angle packet
-}
-
-function startAutoCircle(ws) {
-    if (state.autoCircle) return;
-    state.autoCircle = true;
-    console.log('[AutoCircle] Started');
-
-    state.loop = setInterval(() => {
-        sendMouseAngle(ws);
-    }, LOOP_INTERVAL);
-}
-
-function stopAutoCircle() {
-    state.autoCircle = false;
-    clearInterval(state.loop);
-    console.log('[AutoCircle] Stopped');
-}
-
-function toggleAutoCircle() {
-    if (!state.ws || state.ws.readyState !== WebSocket.OPEN) {
-        console.log("[!] WebSocket not open.");
-        return;
-    }
-
-    state.autoCircle ? stopAutoCircle() : startAutoCircle(state.ws);
-}
-
-// Connect to Slither.io server
-function connectToSlither(serverURL) {
-    const ws = new WebSocket(serverURL);
-    state.ws = ws;
-
-    ws.on('open', () => {
-        console.log(`[+] Connected to ${serverURL}`);
-
-        // Slither.io expects a "login" handshake. We send a dummy skin + nickname packet.
-        // This might not fully emulate a real client (used for local testing).
-        const joinPacket = Buffer.from([
-            115, 10, 0, 0, 4, ...Buffer.from('Bot')
-        ]);
-        ws.send(joinPacket);
-
-        // Optional: enable auto-circle on connect
-        startAutoCircle(ws);
-    });
-
-    ws.on('close', () => {
-        console.log('[-] Disconnected from server.');
-        stopAutoCircle();
-    });
-
-    ws.on('error', err => {
-        console.error(`[!] Error: ${err.message}`);
-    });
-
-    ws.on('message', data => {
-        // You can log server data here for debugging
-        // console.log("[Server]:", data);
-    });
-}
-
-// CLI input
-const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout
+// === Connect ===
+const ws = new WebSocket(serverUrl, {
+  origin: "http://slither.io",
 });
 
-rl.on('line', line => {
-    const cmd = line.trim().toLowerCase();
-    if (cmd === 'toggle') toggleAutoCircle();
+ws.binaryType = "arraybuffer";
+
+ws.on("open", () => {
+  console.log("🟢 Connected to Slither.io server");
 });
 
-// === Start here ===
-const server = 'wss://148.113.17.85:444/slither'; // Change if needed
-connectToSlither(server);
+ws.on("message", (data) => {
+  const type = String.fromCharCode(new Uint8Array(data)[2]);
 
-console.log(`Slither.io Bot\nType 'toggle' to start/stop auto-circle.`);
+  if (type === "6") {
+    console.log("✅ Received Pre-init packet");
+    const secret = [...new Uint8Array(data)].slice(3);
+    const answer = solvePreInit(secret);
+    const answerBuffer = Buffer.from(answer);
+    ws.send(answerBuffer);
+    console.log("📤 Sent challenge answer");
+
+    // Wait a bit then send nickname/skin packet
+    setTimeout(() => sendJoinPacket(ws, nickname, skinId), 100);
+  } else if (type === "a") {
+    console.log("✅ Initial setup complete. Game start.");
+  }
+});
+
+ws.on("error", (err) => {
+  console.error("❌ WebSocket error:", err.message);
+});
+
+ws.on("close", () => {
+  console.log("🔌 Disconnected");
+});
+
+
+// === Solve "Pre-init" packet challenge ===
+function solvePreInit(secret) {
+  const result = [];
+  let globalValue = 0;
+  for (let i = 0; i < 24; i++) {
+    let value1 = secret[17 + i * 2];
+    if (value1 <= 96) value1 += 32;
+    value1 = (value1 - 98 - i * 34) % 26;
+    if (value1 < 0) value1 += 26;
+
+    let value2 = secret[18 + i * 2];
+    if (value2 <= 96) value2 += 32;
+    value2 = (value2 - 115 - i * 34) % 26;
+    if (value2 < 0) value2 += 26;
+
+    let interimResult = (value1 << 4) | value2;
+    let offset = interimResult >= 97 ? 97 : 65;
+    interimResult -= offset;
+
+    if (i === 0) globalValue = 2 + interimResult;
+
+    result.push((interimResult + globalValue) % 26 + offset);
+    globalValue += 3 + interimResult;
+  }
+
+  return result;
+}
+
+// === Send Join Packet (nickname + skin ID) ===
+function sendJoinPacket(ws, nick, skin) {
+  const nickBytes = Buffer.from(nick);
+  const packet = Buffer.alloc(4 + nickBytes.length);
+
+  packet[0] = 115; // 's'
+  packet[1] = protocolVersion - 1;
+  packet[2] = skin;
+  packet[3] = nickBytes.length;
+  nickBytes.copy(packet, 4);
+
+  ws.send(packet);
+  console.log(`📤 Sent nickname "${nick}" with skin ID ${skin}`);
+}
