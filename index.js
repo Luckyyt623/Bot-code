@@ -3,8 +3,8 @@ const generateSkinPacket = require('./skin');
 const runBot = require('./bot');
 
 const servers = [
-  "wss://151.101.0.133:444/slither",
-  "wss://151.101.0.134:444/slither",
+  "wss://148.113.17.85:444/slither",
+  "wss://15.235.216.115:443/slither",
   // ⬅️ Add more manually or fetch from API
 ];
 
