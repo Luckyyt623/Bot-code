@@ -277,7 +277,7 @@ mapToMouse: function(point) {
   // === Bot Module ===
   var bot = window.bot = {
     isBotRunning: false,
-    isBotEnabled: false, // Default to false, toggled by 'T' key
+    isBotEnabled: true, // Default to false, toggled by 'T' key
     stage: 'grow',
     collisionPoints: [],
     collisionAngles: [],
